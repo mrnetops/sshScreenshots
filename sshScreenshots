@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+die() {
+	echo "$@" 1>&2
+	exit
+}
+
+requireProgram() {
+	hash "$1" 2> /dev/null || die "
+ERROR: The $1 program was not found.
+$1 is used to $2"
+}
+
+requireProgram xprop "determine the active window id."
+
+requireProgram expect "automate the interactive ssh session."
+
+requireProgram import "take the screenshot. import is part of imagemagick."
+
+activeWinLine=$(xprop -root | grep "_NET_ACTIVE_WINDOW(WINDOW)")
+activeWinId=${activeWinLine:40}
+
+USER="root"
+OUTPUT="./"
+TIMEOUT="120"
+
+while getopts "c:u:o:t:p:d" option
+do
+	case $option in
+		c)
+			COMMAND="$OPTARG"
+		;;
+		u)
+			USER="$OPTARG"
+		;;
+		o)
+			OUTPUT="$OPTARG"
+		;;
+		t)
+			TIMEOUT="$OPTARG"
+		;;
+		p)
+			PROMPT="$OPTARG"
+		;;
+		d)
+			DEBUG="-d"
+		;;
+		\?)
+			exit
+		;;
+	esac
+done
+
+if [ -z "${PROMPT}" ]
+then
+	PROMPT="${USER}@"
+fi
+		
+while read LINE
+do
+	for HOST in $LINE
+	do
+		clear
+expect ${DEBUG} <<EOD
+		set timeout ${TIMEOUT}
+		spawn ssh ${USER}@${HOST}
+		expect -re ${PROMPT}.*$
+		sleep 2
+		send "${COMMAND}\r"
+		expect -re ${PROMPT}.*$
+		sleep 2
+		send "\r"
+		expect -re ${PROMPT}.*$
+		exit
+EOD
+		sleep 1
+		import -window "$activeWinId" ${OUTPUT}/${HOST}.png
+	done
+done
+
+echo
